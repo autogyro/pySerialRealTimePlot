@@ -25,50 +25,79 @@ import _const as const
 from str_convert import *
 from data_code import *
 
-import sys  # 修改编码方式显示中文
-reload(sys)
-sys.setdefaultencoding('utf-8')
-
-global flag_update
-global receive_buff
-global line
-
-flag_update = False
-receive_buff = []  # receive float data
-
-
-'''
- plot figure
-'''
-fig, ax = plt.subplots()
-line, = ax.plot([], [], lw=2)
-ax.grid()
-xdata, ydata = [], []
-plt.show(block=False)
+import wx
+from matplotlib.figure import Figure
+import matplotlib.font_manager as font_manager
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+# wxWidgets object ID for the timer
+TIMER_ID = wx.NewId()
+# number of data points
+POINTS = 300
+global data
+y_lim = 1000
 
 
-def init():
-    global line
+class PlotFigure(wx.Frame):
+    """Matplotlib wxFrame with animation effect"""
+    global data
 
-    ax.set_ylim(-100, 100)
-    ax.set_xlim(0, 100)
-    del xdata[:]
-    del ydata[:]
-    line.set_data([], [])
-    return line,
+    def __init__(self):
+        wx.Frame.__init__(self, None, wx.ID_ANY,
+                          title="Serial Data Plot", size=(600, 400))
+        # Matplotlib Figure
+        self.fig = Figure((6, 4), 100)
+        # bind the Figure to the backend specific canvas
+        self.canvas = FigureCanvas(self, wx.ID_ANY, self.fig)
+        # add a subplot
+        self.ax = self.fig.add_subplot(111)
+        # limit the X and Y axes dimensions
+        self.ax.set_ylim([0, 100])
+        self.ax.set_xlim([0, POINTS])
+
+        self.ax.set_autoscale_on(False)
+        self.ax.set_xticks([])
+        # we want a tick every 10 point on Y (101 is to have 10
+        self.ax.set_yticks(range(0, 101, 10))
+        # disable autoscale, since we don't want the Axes to ad
+        # draw a grid (it will be only for Y)
+        self.ax.grid(True)
+        # generates first "empty" plots
+        self.user = [None] * POINTS
+        self.l_user, = self.ax.plot(range(POINTS), self.user, label='Acc_X')
+
+        # add the legend
+        self.ax.legend(loc='upper center',
+                           ncol=4,
+                           prop=font_manager.FontProperties(size=10))
+        # force a draw on the canvas()
+        # trick to show the grid and the legend
+        self.canvas.draw()
+        # save the clean background - everything but the line
+        # is drawn and saved in the pixel buffer background
+        self.bg = self.canvas.copy_from_bbox(self.ax.bbox)
+        # bind events coming from timer with id = TIMER_ID
+        # to the onTimer callback function
+        wx.EVT_TIMER(self, TIMER_ID, self.onTimer)
+
+    def onTimer(self, evt):
+        """callback function for timer events"""
+        # restore the clean background, saved at the beginning
+        self.canvas.restore_region(self.bg)
+        # update the data
+        # temp = np.random.randint(10, 80)
+        temp = data
+        self.user = self.user[1:] + [temp]
+        # update the plot
+        self.l_user.set_ydata(self.user)
+        # just draw the "animated" objects
+        # It is used to efficiently update Axes data (axis ticks, labels, etc
+        # are not updated)
+        self.ax.draw_artist(self.l_user)
+        self.canvas.blit(self.ax.bbox)
 
 
-def update(i, buff, l):  # i frame must be the first arg
-    xdata.append(i)
-    ydata.append(buff[0])
-
-    xmin, xmax = ax.get_xlim()  # update xlim and ylim
-    if x_cnt >= xmax:
-        ax.set_xlim(xmin + 50, xmax + 50)
-        ax.figure.canvas.draw()
-    l.set_data(xdata, ydata)
-    print 'update'
-    return l,
+    # def __del__(self):
+    #     t.Stop()
 
 
 '''
@@ -79,8 +108,7 @@ def update(i, buff, l):  # i frame must be the first arg
 
 
 def serial_thread():
-    global receive_buff
-    global flag_update
+    global data
 
     ser = serial.Serial('/dev/ttyUSB0', baudrate=38400,
                         timeout=1)  # open first serial port
@@ -93,26 +121,12 @@ def serial_thread():
             receive_buff = decode(raw_data)
 
             if(receive_buff):
-                flag_update = True
                 print time.ctime()
                 print receive_buff
+
+                data = receive_buff[0]
         time.sleep(0.001)
     ser.close()             # close port
-
-
-def data_plot_thread():
-    global flag_update
-    global receive_buff
-    global line
-
-    while True:
-        if(flag_update):
-            flag_update = False
-            animation.FuncAnimation(fig, update, fargs=(receive_buff, line),
-                                    init_func=init, blit=False, interval=5,
-                                    repeat=False)
-            print 'animation'
-        time.sleep(0.01)
 
 
 '''
@@ -120,10 +134,17 @@ def data_plot_thread():
 '''
 threads = []
 threads.append(threading.Thread(target=serial_thread, args=()))
-# threads.append(threading.Thread(target=data_plot_thread, args=()))
 
 if(__name__ == '__main__'):
-    for t in threads:
-        t.setDaemon(True)
-        t.start()
-    t.join()
+    for th in threads:
+        th.setDaemon(True)
+        th.start()
+
+    app = wx.PySimpleApp()
+    frame = PlotFigure()
+    t = wx.Timer(frame, TIMER_ID)
+    t.Start(50)
+    frame.Show()
+    app.MainLoop()
+
+    th.join()
