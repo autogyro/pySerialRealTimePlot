@@ -30,9 +30,10 @@ from data_plot import PlotFigure
 
 global pitch
 global roll
+global yaw
 pitch = [0]
 roll = [0]
-
+yaw = [0]
 
 
 '''
@@ -42,10 +43,7 @@ roll = [0]
 '''
 
 
-def serial_thread():
-    global pitch
-    global roll
-
+def serial_thread(p, r, y):
     ser = serial.Serial('/dev/ttyUSB0', baudrate=38400,
                         timeout=1)  # open first serial port
     print ser.portstr       # check which port was really used
@@ -60,8 +58,9 @@ def serial_thread():
                 print time.ctime()
                 print receive_buff
 
-                pitch[0] = receive_buff[0]
-                roll[0] = receive_buff[1]
+                p[0] = receive_buff[0]
+                r[0] = receive_buff[1]
+                y[0] = receive_buff[2]
 
         time.sleep(0.001)
     ser.close()             # close port
@@ -70,8 +69,9 @@ def serial_thread():
 '''
   mian loop
 '''
+
 threads = []
-threads.append(threading.Thread(target=serial_thread, args=()))
+threads.append(threading.Thread(target=serial_thread, args=(pitch, roll, yaw)))
 
 if(__name__ == '__main__'):
     for th in threads:
@@ -79,17 +79,14 @@ if(__name__ == '__main__'):
         th.start()
 
     app = wx.PySimpleApp()
-
     # class example
     global pitch
     global roll
-
-    frame = PlotFigure('acc x', pitch)
-    frame.start()
-
-    frame_ = PlotFigure('acc y', roll)
-    frame_.start()
-
+    global yaw
+    PlotFigure('acc x', pitch).start()
+    PlotFigure('acc y', roll).start()
+    # frame = PlotFigure('acc x', pitch)
+    # frame.start()
     app.MainLoop()
 
     th.join()
