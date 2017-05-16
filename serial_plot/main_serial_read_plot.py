@@ -74,11 +74,12 @@ threads = []
 threads.append(threading.Thread(target=serial_thread, args=(pitch, roll, yaw)))
 
 if(__name__ == '__main__'):
+    app = wx.PySimpleApp()
     for th in threads:
         th.setDaemon(True)
         th.start()
+        # th.join()
 
-    app = wx.PySimpleApp()
     # class example
     global pitch
     global roll
@@ -88,5 +89,3 @@ if(__name__ == '__main__'):
     # frame = PlotFigure('acc x', pitch)
     # frame.start()
     app.MainLoop()
-
-    th.join()
